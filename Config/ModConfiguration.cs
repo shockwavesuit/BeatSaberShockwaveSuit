@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -17,12 +17,25 @@ namespace ShockwaveSuit
         public enum HapticsResponseMode {
             SaberPulse,
             OnSlash,
-            OnMiss
+            OnMiss,
+            None
+        }
+        public enum AudioToHapticsResponseMode
+        {
+            None,
+            Random
+        //    Spread
         }
         public HapticsResponseMode hapticsMode = HapticsResponseMode.OnSlash;
+        public AudioToHapticsResponseMode AudioToHapticsMode = AudioToHapticsResponseMode.None;
         public bool ledResponse = true;
+        public bool frontTorso = true;
+        public bool backTorso = true;
+        public bool legs = true;
         public int saberPulseDelay = 200;
-
+        public float hapticsIntensity = 0.8f;
+        public float audioToHapticsIntensity = 0.5f;
+        public float bassRatio = 0.4f;
         public bool debug = false;
         public bool verbose = false;
         public static IEnumerator coLoadBundleFromStreamingAssets(string bundleName) {
