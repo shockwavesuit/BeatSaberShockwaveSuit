@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using BS_Utils.Utilities;
 using UnityEngine.PlayerLoop;
+using Random = UnityEngine.Random;
 
 namespace ShockwaveSuit {
 
@@ -30,7 +31,7 @@ namespace ShockwaveSuit {
         }
         public static string ModName = "Shockwave Suit";
         public string Name => $"{ModName}";// {Version.ToString()}";
-        public string Version => "1.23.0";// System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+        public string Version => "1.24.0";// System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
 
         public static bool writeLogOnExit = true;
         public static string modDataPath = $"./UserData/{ModName}";
@@ -58,12 +59,24 @@ namespace ShockwaveSuit {
 
         public static Logger log = null;
         public static GameObject coRunnerObj;
-
+        public AudioSource source;
         ShockwaveManager suit;
-
+        float leftBass = 0;
+        float rightBass = 0;
+        enum AudioPatterns
+        {
+            TopToBottom,
+            TopToBottomFront,
+            TopToBottomBack,
+            TopToBottomAlternate,
+            BottomToTop,
+            BottomToTopFront,
+            BottomToTopBack,
+            BottomToTopAlternate,
+        }
         public ModPlugin() : base() {
             Instance = this;
-            Task.Run(() => WaitForSuit());
+           InitializeSuit();
             LoadModConfiguration();
 
             //Task.Run(() => Update());
@@ -84,23 +97,18 @@ namespace ShockwaveSuit {
             }
         }
 
-        public async Task WaitForSuit() {
+        public void InitializeSuit() {
             Log($"~~~SHOCKWAVE~~~ Waiting for Suit");
             suit = ShockwaveManager.Instance;
-            suit.InitializeSuit();
+          suit.InitializeSuit();
 
             suit.enableBodyTracking = false;
-            while (!ShockwaveManager.Instance.Ready && ShockwaveManager.Instance.error == 0) { 
-                await Task.Delay(1000);
-                if (ModPlugin.cfg.verbose)
-                    Log($"~~~SHOCKWAVE~~~ Waiting...");
-            }
-
+            
             if(ShockwaveManager.Instance.error > 0) {
                 Log($"~~~SHOCKWAVE~~~ Initialization Error {ShockwaveManager.Instance.error}");
             } else if (ShockwaveManager.Instance.Ready) {
-                ShockwaveManager.Instance.InitSequence();
-                Log($"~~~SHOCKWAVE~~~ Suit Connected { (ShockwaveManager.Instance.isUsingSteamVR ? "SteamVR" : "Native") }");
+              //  ShockwaveManager.Instance.InitSequence();
+            //    Log($"~~~SHOCKWAVE~~~ Suit Connected { (ShockwaveManager.Instance.isUsingSteamVR ? "SteamVR" : "Native") }");
             } else
                 Log($"~~~SHOCKWAVE~~~ Unknown Init Error");
         }
@@ -265,6 +273,18 @@ namespace ShockwaveSuit {
             ShockwaveManager.HapticGroup.TORSO,
             ShockwaveManager.HapticGroup.TORSO_BACK
         };
+        public static List<ShockwaveManager.HapticGroup> FrontSpreadEffectTop = new List<ShockwaveManager.HapticGroup>() {
+            ShockwaveManager.HapticGroup.WAIST_FRONT,
+            ShockwaveManager.HapticGroup.CHEST_FRONT,
+            ShockwaveManager.HapticGroup.SHOULDERS_FRONT,
+            ShockwaveManager.HapticGroup.LEFT_SHOULDER,          
+        };
+        public static List<ShockwaveManager.HapticGroup> FrontSpreadEffectBottom = new List<ShockwaveManager.HapticGroup>() {
+            ShockwaveManager.HapticGroup.WAIST_FRONT,
+            ShockwaveManager.HapticGroup.TORSO_FRONT,
+            ShockwaveManager.HapticGroup.HIP_FRONT,
+            ShockwaveManager.HapticGroup.LEFT_LEG_FRONT,
+        };
         #endregion
 
         [Init]
@@ -305,8 +325,8 @@ namespace ShockwaveSuit {
             BS_Utils.Utilities.BSEvents.earlyMenuSceneLoadedFresh += OnEarlyMenuSceneLoadedFresh;
             BS_Utils.Utilities.BSEvents.lateMenuSceneLoadedFresh += OnLateMenuSceneLoadedFresh;
             BS_Utils.Utilities.BSEvents.levelFailed += OnFailed;
-            BS_Utils.Utilities.BSEvents.songPaused += SongPaused;
-            BS_Utils.Utilities.BSEvents.songUnpaused += SongUnPaused;
+          //  BS_Utils.Utilities.BSEvents.songPaused += SongPaused;
+          //  BS_Utils.Utilities.BSEvents.songUnpaused += SongUnPaused;
             BS_Utils.Utilities.BSEvents.noteWasCut += NoteWasCut;
             BS_Utils.Utilities.BSEvents.noteWasMissed += NoteWasMissed;
 
@@ -323,8 +343,13 @@ namespace ShockwaveSuit {
                 IsAtMainMenu = false;
 
                 FindPlayerObject();
-
+               
                 SetupControllersForGameScene();
+                if (cfg.AudioToHapticsMode == ModConfiguration.AudioToHapticsResponseMode.Random)
+                {
+                    Task.Run(() => CheckAudioSignal_Random());
+                }
+           
             };
 
             //BS_Utils.Utilities.BSEvents.menuSceneLoaded += SetupControllersForMenuScene;
@@ -338,7 +363,7 @@ namespace ShockwaveSuit {
         }
 
         public void Update() {
-
+            
         }
 
         // Shockwave LEDS:
@@ -361,13 +386,13 @@ namespace ShockwaveSuit {
 
             if (cfg.hapticsMode == ModConfiguration.HapticsResponseMode.OnMiss) {
                 Log($"~~~SHOCKWAVE DEBUG~~~ NOTE CUT | {noteData}");
-
+                
                 int duration = Mathf.RoundToInt(noteData.timeToNextColorNote * 1000);
                 switch (noteData.noteLineLayer) {
                     case NoteLineLayer.Base:
                         switch (noteData.lineIndex) {
                             case 0:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_LOWER_LEG, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_LOWER_LEG, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 3;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -375,7 +400,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 1:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_THIGH, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_THIGH, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 3;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -383,7 +408,7 @@ namespace ShockwaveSuit {
                                 } 
                                 break;
                             case 2:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_THIGH, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_THIGH, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 2;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -391,7 +416,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 3:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_LOWER_LEG, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_LOWER_LEG, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 2;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -405,7 +430,7 @@ namespace ShockwaveSuit {
                     case NoteLineLayer.Upper:
                         switch (noteData.lineIndex) {
                             case 0:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_WAIST, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_WAIST, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 4;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -413,7 +438,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 1:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_TORSO, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_TORSO, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 4;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -421,7 +446,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 2:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_WAIST, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_WAIST, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 1;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -429,7 +454,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 3:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_TORSO, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_TORSO, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 1;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -443,7 +468,7 @@ namespace ShockwaveSuit {
                     case NoteLineLayer.Top:
                         switch (noteData.lineIndex) {
                             case 0:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_SHOULDER, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_SHOULDER, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 5;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -451,7 +476,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 1:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_CHEST, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_CHEST, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 5;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -459,7 +484,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 2:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_CHEST, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_CHEST, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 0;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -467,7 +492,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 3:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_SHOULDER, 1.0f, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_SHOULDER, cfg.hapticsIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 0;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -492,12 +517,13 @@ namespace ShockwaveSuit {
             NoteData noteData = note.noteData;
             if (ModPlugin.cfg.hapticsMode == ModConfiguration.HapticsResponseMode.OnSlash) {
                 int duration = 200;
+                float cutIntensity = noteCutInfo.saberSpeed * cfg.hapticsIntensity;
                 switch (noteData.noteLineLayer) {
                     case NoteLineLayer.Base:
                         switch (noteData.lineIndex) {
                             case 0:
                                 if (ShockwaveManager.Instance != null) {
-                                    ShockwaveManager.Instance.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_LOWER_LEG, noteCutInfo.saberSpeed, duration);
+                                    ShockwaveManager.Instance.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_LOWER_LEG, cutIntensity, duration);
                                     if (cfg.ledResponse) {
                                         ledIdx[0] = 3;
                                         ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -506,7 +532,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 1:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_THIGH, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_THIGH, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 3;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -514,7 +540,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 2:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_THIGH, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_THIGH, cutIntensity, duration);
 
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 2;
@@ -523,7 +549,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 3:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_LOWER_LEG, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_LOWER_LEG, cutIntensity, duration);
 
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 2;
@@ -538,7 +564,7 @@ namespace ShockwaveSuit {
                     case NoteLineLayer.Upper:
                         switch (noteData.lineIndex) {
                             case 0:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_WAIST, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_WAIST, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 4;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -546,7 +572,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 1:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_TORSO, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_TORSO, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 4;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -554,7 +580,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 2:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_WAIST, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_WAIST, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 1;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -562,7 +588,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 3:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_TORSO, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_TORSO, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 1;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -576,7 +602,7 @@ namespace ShockwaveSuit {
                     case NoteLineLayer.Top:
                         switch (noteData.lineIndex) {
                             case 0:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_SHOULDER, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_SHOULDER, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 5;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -584,7 +610,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 1:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_CHEST, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.LEFT_CHEST, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 5;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -592,7 +618,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 2:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_CHEST, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_CHEST, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 0;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -600,7 +626,7 @@ namespace ShockwaveSuit {
                                 }
                                 break;
                             case 3:
-                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_SHOULDER, noteCutInfo.saberSpeed, duration);
+                                ShockwaveManager.Instance?.SendHapticGroup(ShockwaveManager.HapticGroup.RIGHT_SHOULDER, cutIntensity, duration);
                                 if (cfg.ledResponse) {
                                     ledIdx[0] = 0;
                                     ColorToFloatArray(colorMan?.ColorForType(noteData.colorType) ?? Color.clear);
@@ -615,7 +641,7 @@ namespace ShockwaveSuit {
                         return;
                 }
             } else if (ModPlugin.cfg.hapticsMode == ModConfiguration.HapticsResponseMode.SaberPulse) {
-                Task.Run(() => PlayPulse(noteCutInfo.saberType == SaberType.SaberA ? LeftArmEffect : RightArmEffect));
+                Task.Run(() => PlayPulse(noteCutInfo.saberType == SaberType.SaberA ? LeftArmEffect : RightArmEffect, ModPlugin.cfg.saberPulseDelay));
 
                 switch (noteData.noteLineLayer) {
                     case NoteLineLayer.Base:
@@ -751,13 +777,13 @@ namespace ShockwaveSuit {
         }
 
 
-        public async static Task PlayPulse(List<ShockwaveManager.HapticGroup> pulseList) {
+        public async static Task PlayPulse(List<ShockwaveManager.HapticGroup> pulseList,int pulseDelay) {
             List<ShockwaveManager.HapticGroup> pulses = new List<ShockwaveManager.HapticGroup>();
             pulses.AddRange(pulseList);
-            int pulseDelay = ModPlugin.cfg.saberPulseDelay;
+            
 
             while (pulses.Count > 0) {
-                ShockwaveManager.Instance?.SendHapticGroup(pulses[0], 1.0f, 200);
+                ShockwaveManager.Instance?.SendHapticGroup(pulses[0], cfg.hapticsIntensity,( (int)(pulseDelay*1.5f)/25) *25);
                 pulses.RemoveAt(0);
                 await Task.Delay(pulseDelay);
             }
@@ -870,8 +896,10 @@ namespace ShockwaveSuit {
 
 
         void OnApplicationQuit() {
+            IsApplicationExiting = true;
+            ShockwaveManager.Instance?.DisconnectSuit();
             File.WriteAllText(logFilePath, LogFileData, System.Text.Encoding.ASCII);
-            ModPlugin.Log("Shutting down SpinMod");
+            ModPlugin.Log("Shutting down ShockwaveMod");
         }
 
 
@@ -924,5 +952,83 @@ namespace ShockwaveSuit {
 
             File.WriteAllText($"./{fileName}", GameObjectNames);
         }
+        public async Task CheckAudioSignal_Random()
+        {
+            int [] AllRegions = { 5, 4, 3, 2, 12, 15, 28, 25, 22, 19, 40, 44, 56, 53, 50, 47, 68, 71 ,5,4,3,25,25,28,5,4,25,28};
+            int[] TopToBottom = { 5, 4, 3, 2, 12, 15 };
+            int[] FrontTorsoTopToBottom = { 31,28, 25, 22,19};
+       
+            int[] BackTorsoTopToBottom = { 59,56, 53, 50, 47};
+           
+            int[] Legs = { 12, 15 };
+            float[] leftspectrum = new float[64];
+            int beatCounter = 0;
+            int region = 5;
+          
+          
+            float IntegratedBass = 0;
+            while (!IsApplicationExiting&& !IsAtMainMenu)
+           
+            {
+                AudioListener.GetSpectrumData(leftspectrum, 0, FFTWindow.Rectangular);
+             
+              
+                 leftBass = 0;
+            
+                for (int i = 0; i < (int)(leftspectrum.Length * cfg.bassRatio); i++)
+                {
+                    leftBass += leftspectrum[i];
+                
+                }
+
+                IntegratedBass += (leftBass / 7);
+           
+                {
+                
+                    int randomRegion = 0;
+                    if (cfg.frontTorso)
+                    {
+                        if (beatCounter == 0)
+                        {
+                            randomRegion = Random.Range(0, FrontTorsoTopToBottom.Length - 1);
+                           
+                            region = FrontTorsoTopToBottom[randomRegion];
+                        }
+                        ShockwaveManager.Instance?.SendHapticGroup((ShockwaveManager.HapticGroup)region,  IntegratedBass * cfg.audioToHapticsIntensity, 200);
+                    }
+                    if (cfg.backTorso)
+                    {
+                        if (beatCounter == 0)
+                        {
+                            randomRegion = Random.Range(0, BackTorsoTopToBottom.Length - 1);
+                            region = BackTorsoTopToBottom[randomRegion];
+                        }
+                        ShockwaveManager.Instance?.SendHapticGroup((ShockwaveManager.HapticGroup)region,  IntegratedBass * cfg.audioToHapticsIntensity, 200);
+                    }
+                    if (cfg.legs)
+                    {
+                        if (beatCounter == 0)
+                        {
+                            randomRegion = Random.Range(0, Legs.Length - 1);
+                            region = Legs[randomRegion];
+                        }
+                        ShockwaveManager.Instance?.SendHapticGroup((ShockwaveManager.HapticGroup)region,IntegratedBass * cfg.audioToHapticsIntensity,200);
+                    }
+                    if(beatCounter==0)
+                    {
+                        IntegratedBass = 0;
+                    }
+                    beatCounter++;
+                }
+             
+             
+                await Task.Delay(20); 
+            
+                if (beatCounter == 7)
+                { beatCounter = 0; }
+
+            }
+        }
+      
     }
 }
