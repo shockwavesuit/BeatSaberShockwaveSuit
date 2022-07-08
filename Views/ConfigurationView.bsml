@@ -1,9 +1,18 @@
-﻿<vertical>
+<vertical>
   <horizontal>
     <vertical preferred-width="75">
-      <dropdown-list-setting text='Haptics Mode' font-size='4' value='selected-haptics-mode' options='haptics-mode-list' apply-on-change='true' hover-hint='SaberPulse - Your Arms surge with power%0D%0AOnSlash - Feel the slash on your body%0D%0AOnMiss - Feel the miss on your body'></dropdown-list-setting>
+      <dropdown-list-setting text='Haptics Mode' font-size='4' value='selected-haptics-mode' options='haptics-mode-list' apply-on-change='true'  hover-hint='SaberPulse - Your Arms surge with power%0D%0AOnSlash - Feel the slash on your body%0D%0AOnMiss - Feel the miss on your body'></dropdown-list-setting>
+      <slider-setting text='Haptics Intensity' min='0.2' max='1' increment='0.05' value='haptics-intensity'  apply-on-change='true' hover-hint='The intensity of haptics from slashes and misses' ></slider-setting>
       <checkbox text='Enable LED Response' value='enable-LEDs' apply-on-change='true' hover-hint='LEDs on Shockwave can respond to events'></checkbox>
-      <slider-setting text='Saber Pulse Delay' min='10' max='200' increment='10' value='saber-pulse-delay' integer-only='true' apply-on-change='true' hover-hint='The rate in milliseconds at which a Saber Pulse propogates (Lower is faster)%0D%0A[SaberPulse mode Only]' ></slider-setting>
+      <slider-setting text='Saber Pulse Delay' min='70' max='200' increment='10' value='saber-pulse-delay' integer-only='true' apply-on-change='true' hover-hint='The rate in milliseconds at which a Saber Pulse propogates (Lower is faster)%0D%0A[SaberPulse mode Only]' ></slider-setting>
+      <dropdown-list-setting text='Audio To Haptics Mode' font-size='4' value='selected-audio-mode' options='audio-mode-list' apply-on-change='true'  hover-hint='None - No Response To Audio %0D%0ARandom - Activate random regions on body with audio%0D%0ASpread - Feel the audio as a spread from the chest'></dropdown-list-setting>
+        <horizontal> <text  text='Front Torso'></text>  <text  text='Back Torso'></text> <text  text='Legs'></text></horizontal>
+        <horizontal>  <checkbox text=' ' value='front-torso' apply-on-change='true' hover-hint='Audio Haptics Activate on front Torso'></checkbox> 
+    <checkbox text=' ' value='back-torso' apply-on-change='true' hover-hint='Audio Haptics Activate on back Torso'></checkbox> 
+        <checkbox text=' ' value='legs' apply-on-change='true' hover-hint='Audio Haptics Activate on Legs'></checkbox> 
+   </horizontal>
+    <slider-setting text='Audio To Haptics Intensity' min='0.1' max='1' increment='0.1' value='audio-haptics-intensity'  apply-on-change='true' hover-hint='The intensity of haptics from the audio' ></slider-setting>
+      <slider-setting text='Audio Bass Ratio' min='0.1' max='1' increment='0.05' value='bass-ratio'  apply-on-change='true' hover-hint='The amount of bass to treble ratio applied to the haptics. Higher values correspond to higher bass response' ></slider-setting>
     </vertical>
   </horizontal>
 </vertical>
